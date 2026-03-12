@@ -1,4 +1,4 @@
-const nodemailer = require('nodemailer');
+const { createTransport } = require('nodemailer');
 const { getLimitForDomain } = require('./limits');
 
 function sleep(ms) {
@@ -7,7 +7,7 @@ function sleep(ms) {
 
 async function sendSingleEmail(lead, account) {
   try {
-    const transporter = nodemailer.createTransport({
+    const transporter = createTransport({
       host: account.smtp_host,
       port: account.smtp_port,
       secure: account.smtp_port === 465,

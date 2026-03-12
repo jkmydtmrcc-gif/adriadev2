@@ -1,5 +1,5 @@
 const express = require('express');
-const nodemailer = require('nodemailer');
+const { createTransport } = require('nodemailer');
 
 module.exports = function (db) {
   const router = express.Router();
@@ -64,7 +64,7 @@ module.exports = function (db) {
     try {
       const acc = db.prepare('SELECT * FROM email_accounts WHERE id = ?').get(req.params.id);
       if (!acc) return res.status(404).json({ error: 'Account not found' });
-      const transporter = nodemailer.createTransport({
+      const transporter = createTransport({
         host: acc.smtp_host,
         port: acc.smtp_port,
         secure: acc.smtp_port === 465,
@@ -73,7 +73,12 @@ module.exports = function (db) {
       await transporter.verify();
       res.json({ ok: true, message: 'Veza uspješna' });
     } catch (e) {
-      res.status(400).json({ ok: false, error: e.message });
+      const msg = e.message || '';
+      const friendly =
+        /invalid login|535|authentication failed/i.test(msg)
+          ? 'Prijava nije uspjela. Provjeri SMTP korisničko ime i lozinku (npr. API ključ za Brevo).'
+          : msg;
+      res.status(400).json({ ok: false, error: friendly });
     }
   });
 
