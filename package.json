@@ -1,0 +1,26 @@
+{
+  "name": "adria-dev-outreach",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "nodemon server/index.js",
+    "client": "cd client && npm run dev",
+    "install:all": "npm install && cd client && npm install",
+    "build": "cd client && npm run build"
+  },
+  "dependencies": {
+    "openai": "^4.73.0",
+    "axios": "^1.7.0",
+    "better-sqlite3": "^11.6.0",
+    "cheerio": "^1.0.0",
+    "concurrently": "^9.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.0",
+    "express": "^4.21.0",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.9.0",
+    "nodemon": "^3.1.0",
+    "pdfkit": "^0.15.0"
+  }
+}

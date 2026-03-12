@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #08080F;
+  --bg-surface: #0F0F1A;
+  --bg-elevated: #161625;
+  --border: #1F1F35;
+  --accent: #7C6AF7;
+  --accent-glow: rgba(124, 106, 247, 0.15);
+  --success: #10D9A0;
+  --warning: #F5A623;
+  --danger: #FF4D6D;
+  --text-primary: #EEEEF5;
+  --text-secondary: #7878A0;
+  --text-muted: #3D3D60;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'DM Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  font-family: 'Syne', sans-serif;
+}
+
+.font-mono {
+  font-family: 'DM Mono', monospace;
+}
+
+@layer utilities {
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(124, 106, 247, 0.3); }
+  50% { box-shadow: 0 0 40px rgba(124, 106, 247, 0.5); }
+}
