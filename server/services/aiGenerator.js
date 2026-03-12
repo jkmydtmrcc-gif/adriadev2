@@ -1,7 +1,16 @@
-async function generateMessages(lead, openai) {
+async function generateMessages(lead, openai, agency = {}) {
   const websiteStatus = lead.has_website
     ? `DA — kvaliteta: ${lead.website_quality}/10, mobilna verzija: ${lead.is_mobile_friendly ? 'DA' : 'NE'}`
     : 'NE — nema web stranicu uopće';
+
+  const ownerName = agency.owner_name || 'Adria Dev';
+  const agencyPhone = agency.phone || '';
+  const agencyEmail = agency.email || '';
+
+  const signatureLine =
+    agencyPhone || agencyEmail
+      ? `\n\n--\n${ownerName}${agencyPhone ? `\nTel: ${agencyPhone}` : ''}${agencyEmail ? `\n${agencyEmail}` : ''}`
+      : '';
 
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
@@ -19,6 +28,7 @@ Piši poruke na HRVATSKOM jeziku koje su:
 - Fokus na KORIST za klijenta, ne na hvaljenje agencije
 - Bez generičnih fraza poput "nudimo Vam naše usluge"
 - Soft CTA — "Javi se ako te zanima", ne "KUPI ODMAH"
+- VAŽNO: U email_body NE stavljaj potpis, ime, telefon ili "[vaše ime]" — potpis se automatski dodaje na kraju.
 
 Adria Dev nudi:
 - Web stranice od 400€ (gotovo za 2-3 tjedna)
@@ -51,17 +61,29 @@ Web stranica: ${websiteStatus}
 Google ocjena: ${lead.google_rating} (${lead.google_reviews} recenzija)
 Telefon: ${lead.phone || 'nije dostupan'}
 
-Generiraj personaliziranu email i WhatsApp poruku.`,
+Generiraj personaliziranu email i WhatsApp poruku (bez potpisa na kraju emaila).`,
       },
     ],
   });
 
   const raw = response.choices[0].message.content.trim();
   const clean = raw.replace(/```json\n?|\n?```/g, '').trim();
-  return JSON.parse(clean);
+  const parsed = JSON.parse(clean);
+  if (parsed.email_body && signatureLine) {
+    parsed.email_body = parsed.email_body.trim() + signatureLine;
+  }
+  return parsed;
 }
 
-async function generateFollowUp(lead, followUpNumber, openai) {
+async function generateFollowUp(lead, followUpNumber, openai, agency = {}) {
+  const ownerName = agency.owner_name || 'Adria Dev';
+  const agencyPhone = agency.phone || '';
+  const agencyEmail = agency.email || '';
+  const signatureLine =
+    agencyPhone || agencyEmail
+      ? `\n\n--\n${ownerName}${agencyPhone ? `\nTel: ${agencyPhone}` : ''}${agencyEmail ? `\n${agencyEmail}` : ''}`
+      : '';
+
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     max_tokens: 500,
@@ -78,6 +100,7 @@ Pravila:
 - Follow-up 2: Blagi FOMO "Zadnji put se javljam, imamo još slobodnih termina u ožujku..."
 - Uvijek: vidiš stranicu PRIJE nego platiš, nema rizika
 - Nikad agresivno
+- U email_body NE stavljaj potpis ili "[vaše ime]" — potpis se automatski dodaje.
 
 Vrati SAMO JSON:
 {"email_subject":"...","email_body":"...","whatsapp_body":"..."}`,
@@ -90,7 +113,11 @@ Vrati SAMO JSON:
   });
   const raw = response.choices[0].message.content.trim();
   const clean = raw.replace(/```json\n?|\n?```/g, '').trim();
-  return JSON.parse(clean);
+  const parsed = JSON.parse(clean);
+  if (parsed.email_body && signatureLine) {
+    parsed.email_body = parsed.email_body.trim() + signatureLine;
+  }
+  return parsed;
 }
 
 module.exports = { generateMessages, generateFollowUp };

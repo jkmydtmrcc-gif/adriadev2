@@ -3,6 +3,7 @@ const { sendSingleEmail } = require('./emailSender');
 
 async function runFollowUps(db, openai) {
   const today = new Date().toISOString().split('T')[0];
+  const agency = db.prepare('SELECT owner_name, phone, email FROM agency_settings LIMIT 1').get() || {};
 
   const followUp1 = db
     .prepare(
@@ -16,7 +17,7 @@ async function runFollowUps(db, openai) {
 
   for (const lead of followUp1) {
     try {
-      const msg = await generateFollowUp(lead, 1, openai);
+      const msg = await generateFollowUp(lead, 1, openai, agency);
       if (lead.email) {
         const accounts = db.prepare('SELECT * FROM email_accounts WHERE is_active = 1 LIMIT 1').all();
         if (accounts.length) {
@@ -49,7 +50,7 @@ async function runFollowUps(db, openai) {
 
   for (const lead of followUp2) {
     try {
-      const msg = await generateFollowUp(lead, 2, openai);
+      const msg = await generateFollowUp(lead, 2, openai, agency);
       if (lead.email) {
         const accounts = db.prepare('SELECT * FROM email_accounts WHERE is_active = 1 LIMIT 1').all();
         if (accounts.length) {

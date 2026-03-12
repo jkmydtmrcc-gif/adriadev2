@@ -272,6 +272,7 @@ async function runAutopilot(db, openai, sseClients) {
     appendLog(`📊 Ukupno novih leadova: ${totalLeadsFound}`);
 
     appendLog('✍️ Generiram personalizirane poruke...');
+    const agency = db.prepare('SELECT owner_name, phone, email FROM agency_settings LIMIT 1').get() || {};
     const leadsForMessages = db
       .prepare(
         `SELECT * FROM leads WHERE status = 'new' ORDER BY score DESC LIMIT 200`
@@ -285,7 +286,7 @@ async function runAutopilot(db, openai, sseClients) {
       await Promise.all(
         batch.map(async (lead) => {
           try {
-            const messages = await generateMessages(lead, openai);
+            const messages = await generateMessages(lead, openai, agency);
             db.prepare(
               `UPDATE leads SET 
               email_subject = ?, email_body = ?, whatsapp_body = ?, status = 'message_ready'
