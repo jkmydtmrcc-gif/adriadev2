@@ -95,6 +95,9 @@ export default function Settings() {
           <p className="text-text-muted text-sm mt-1">
             Dodaj do 5 SMTP računa. Svaki ima dnevni limit prema warming rasporedu.
           </p>
+          <p className="text-text-muted text-xs mt-1">
+            Autopilot šalje mailove svaki dan u <strong className="text-text-secondary">9:00</strong> (vrijeme servera). Follow-up mailovi u 10:00.
+          </p>
         </CardHeader>
         {loading ? (
           <div className="h-32 flex items-center justify-center text-text-muted">Učitavanje...</div>

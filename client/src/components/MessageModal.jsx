@@ -17,6 +17,12 @@ export function MessageModal({ lead, onClose }) {
           </div>
           {lead && (
             <div className="space-y-4 text-sm">
+              {(lead.sent_at || lead.sent_from_domain) && (
+                <div className="text-xs text-text-muted">
+                  {lead.sent_at && <span>Poslano: {new Date(lead.sent_at).toLocaleString('hr-HR', { dateStyle: 'medium', timeStyle: 'short' })}</span>}
+                  {lead.sent_from_domain && <span className="ml-2">S računa: {lead.sent_from_domain}</span>}
+                </div>
+              )}
               <div>
                 <p className="text-text-muted mb-1">Subject</p>
                 <p className="text-text-primary font-medium">{lead.email_subject || '—'}</p>

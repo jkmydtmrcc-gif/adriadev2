@@ -71,10 +71,12 @@ export function LeadsTable({ leads, loading, onUpdate }) {
           <thead>
             <tr className="border-b border-border text-left text-text-muted">
               <th className="pb-3 pr-4">Biznis</th>
+              <th className="pb-3 pr-4">Email</th>
               <th className="pb-3 pr-4">Grad</th>
               <th className="pb-3 pr-4">Industrija</th>
               <th className="pb-3 pr-4">Score</th>
               <th className="pb-3 pr-4">Status</th>
+              <th className="pb-3 pr-4">Poslano</th>
               <th className="pb-3 pr-4">Akcije</th>
             </tr>
           </thead>
@@ -82,10 +84,12 @@ export function LeadsTable({ leads, loading, onUpdate }) {
             {[1, 2, 3, 4, 5].map((i) => (
               <tr key={i} className="border-b border-border/50 animate-pulse">
                 <td className="py-3 pr-4"><div className="h-4 bg-bg-elevated rounded w-32" /></td>
+                <td className="py-3 pr-4"><div className="h-4 bg-bg-elevated rounded w-28" /></td>
                 <td className="py-3 pr-4"><div className="h-4 bg-bg-elevated rounded w-20" /></td>
                 <td className="py-3 pr-4"><div className="h-4 bg-bg-elevated rounded w-24" /></td>
                 <td className="py-3 pr-4"><div className="h-4 bg-bg-elevated rounded w-8" /></td>
                 <td className="py-3 pr-4"><div className="h-4 bg-bg-elevated rounded w-16" /></td>
+                <td className="py-3 pr-4"><div className="h-4 bg-bg-elevated rounded w-20" /></td>
                 <td className="py-3 pr-4" />
               </tr>
             ))}
@@ -106,10 +110,12 @@ export function LeadsTable({ leads, loading, onUpdate }) {
           <thead>
             <tr className="border-b border-border text-left text-text-muted">
               <th className="pb-3 pr-4">Biznis</th>
+              <th className="pb-3 pr-4">Email</th>
               <th className="pb-3 pr-4">Grad</th>
               <th className="pb-3 pr-4">Industrija</th>
               <th className="pb-3 pr-4">Score</th>
               <th className="pb-3 pr-4">Status</th>
+              <th className="pb-3 pr-4">Poslano</th>
               <th className="pb-3 pr-4">Akcije</th>
             </tr>
           </thead>
@@ -117,10 +123,15 @@ export function LeadsTable({ leads, loading, onUpdate }) {
             {leads.map((lead) => (
               <tr key={lead.id} className="border-b border-border/50 hover:bg-bg-elevated/50">
                 <td className="py-3 pr-4 font-medium text-text-primary">{lead.business_name}</td>
+                <td className="py-3 pr-4 text-text-secondary text-xs max-w-[140px] truncate" title={lead.email}>{lead.email || '—'}</td>
                 <td className="py-3 pr-4 text-text-secondary">{lead.city}</td>
                 <td className="py-3 pr-4 text-text-secondary">{lead.industry}</td>
                 <td className="py-3 pr-4"><ScoreBadge score={lead.score} /></td>
                 <td className="py-3 pr-4"><StatusBadge lead={lead} /></td>
+                <td className="py-3 pr-4 text-text-muted text-xs whitespace-nowrap">
+                  {lead.sent_at ? new Date(lead.sent_at).toLocaleString('hr-HR', { dateStyle: 'short', timeStyle: 'short' }) : '—'}
+                  {lead.sent_from_domain && <span className="block text-[10px] text-text-muted" title="S računa">{lead.sent_from_domain}</span>}
+                </td>
                 <td className="py-3 pr-4 flex flex-wrap gap-1">
                   <Button
                     variant="ghost"
