@@ -7,7 +7,7 @@ function sleep(ms) {
 
 async function sendSingleEmail(lead, account) {
   try {
-    const transporter = nodemailer.createTransporter({
+    const transporter = nodemailer.createTransport({
       host: account.smtp_host,
       port: account.smtp_port,
       secure: account.smtp_port === 465,

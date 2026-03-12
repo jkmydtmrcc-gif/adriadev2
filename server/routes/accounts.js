@@ -64,7 +64,7 @@ module.exports = function (db) {
     try {
       const acc = db.prepare('SELECT * FROM email_accounts WHERE id = ?').get(req.params.id);
       if (!acc) return res.status(404).json({ error: 'Account not found' });
-      const transporter = nodemailer.createTransporter({
+      const transporter = nodemailer.createTransport({
         host: acc.smtp_host,
         port: acc.smtp_port,
         secure: acc.smtp_port === 465,

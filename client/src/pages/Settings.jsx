@@ -14,23 +14,68 @@ export default function Settings() {
 
   useEffect(() => {
     fetch(`${API}/accounts`)
-      .then((r) => r.json())
-      .then(setAccounts)
+      .then((r) => r.text())
+      .then((text) => {
+        try {
+          setAccounts(text ? JSON.parse(text) : [])
+        } catch {
+          setAccounts([])
+        }
+      })
       .catch(() => setAccounts([]))
       .finally(() => setLoading(false))
   }, [])
+
+  const refreshAccounts = () =>
+    fetch(`${API}/accounts`)
+      .then((r) => r.text())
+      .then((text) => {
+        try {
+          setAccounts(text ? JSON.parse(text) : [])
+        } catch {
+          setAccounts([])
+        }
+      })
 
   const testConnection = async (id) => {
     setTestingId(id)
     try {
       const res = await fetch(`${API}/accounts/${id}/test`, { method: 'POST' })
-      const data = await res.json()
+      const text = await res.text()
+      let data
+      try {
+        data = text ? JSON.parse(text) : {}
+      } catch {
+        toastError('Server nije vratio valjani odgovor. Je li backend pokrenut?')
+        return
+      }
       if (data.ok) toastSuccess('Veza uspješna ✅')
       else toastError(data.error || 'Greška')
     } catch (e) {
       toastError(e.message)
     } finally {
       setTestingId(null)
+    }
+  }
+
+  const deleteAccount = async (id) => {
+    if (!window.confirm('Obrisati ovaj email račun?')) return
+    try {
+      const res = await fetch(`${API}/accounts/${id}`, { method: 'DELETE' })
+      const text = await res.text()
+      let data
+      try {
+        data = text ? JSON.parse(text) : {}
+      } catch {
+        toastError('Server nije vratio valjani odgovor.')
+        return
+      }
+      if (data.ok !== false) {
+        toastSuccess('Račun obrisan')
+        refreshAccounts()
+      } else toastError(data.error || 'Greška')
+    } catch (e) {
+      toastError(e.message)
     }
   }
 
@@ -47,7 +92,7 @@ export default function Settings() {
         <CardHeader>
           <CardTitle>Email računi</CardTitle>
           <p className="text-text-muted text-sm mt-1">
-            Dodaj do 3 SMTP računa. Svaki ima dnevni limit prema warming rasporedu.
+            Dodaj do 5 SMTP računa. Svaki ima dnevni limit prema warming rasporedu.
           </p>
         </CardHeader>
         {loading ? (
@@ -59,11 +104,12 @@ export default function Settings() {
                 key={acc.id}
                 account={acc}
                 onTest={() => testConnection(acc.id)}
+                onDelete={() => deleteAccount(acc.id)}
                 testing={testingId === acc.id}
               />
             ))}
-            {accounts.length < 3 && (
-              <AddAccountForm onAdded={() => fetch(`${API}/accounts`).then((r) => r.json()).then(setAccounts)} />
+            {accounts.length < 5 && (
+              <AddAccountForm onAdded={refreshAccounts} />
             )}
           </div>
         )}
@@ -85,7 +131,7 @@ export default function Settings() {
   )
 }
 
-function AccountRow({ account, onTest, testing }) {
+function AccountRow({ account, onTest, onDelete, testing }) {
   return (
     <div className="p-4 rounded-lg bg-bg-elevated border border-border flex flex-wrap items-center gap-3">
       <div className="flex-1 min-w-0">
@@ -95,9 +141,19 @@ function AccountRow({ account, onTest, testing }) {
           Danas: {account.sent_today ?? 0} / limit (warming)
         </p>
       </div>
-      <Button variant="secondary" size="sm" onClick={onTest} disabled={testing}>
-        {testing ? 'Testiram...' : 'Testiraj vezu'}
-      </Button>
+      <div className="flex gap-2">
+        <Button variant="secondary" size="sm" onClick={onTest} disabled={testing}>
+          {testing ? 'Testiram...' : 'Testiraj vezu'}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onDelete}
+          className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+        >
+          Obriši
+        </Button>
+      </div>
     </div>
   )
 }
@@ -129,7 +185,14 @@ function AddAccountForm({ onAdded }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       })
-      const data = await res.json()
+      const text = await res.text()
+      let data
+      try {
+        data = text ? JSON.parse(text) : {}
+      } catch {
+        toastError('Server nije vratio valjani odgovor. Je li backend pokrenut?')
+        return
+      }
       if (data.id) {
         toastSuccess('Račun dodan')
         setShow(false)
