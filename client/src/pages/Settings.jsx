@@ -11,6 +11,7 @@ export default function Settings() {
   const [accounts, setAccounts] = useState([])
   const [loading, setLoading] = useState(true)
   const [testingId, setTestingId] = useState(null)
+  const [editingId, setEditingId] = useState(null)
 
   useEffect(() => {
     fetch(`${API}/accounts`)
@@ -99,15 +100,28 @@ export default function Settings() {
           <div className="h-32 flex items-center justify-center text-text-muted">Učitavanje...</div>
         ) : (
           <div className="space-y-4">
-            {accounts.map((acc) => (
-              <AccountRow
-                key={acc.id}
-                account={acc}
-                onTest={() => testConnection(acc.id)}
-                onDelete={() => deleteAccount(acc.id)}
-                testing={testingId === acc.id}
-              />
-            ))}
+            {accounts.map((acc) =>
+              editingId === acc.id ? (
+                <EditAccountForm
+                  key={acc.id}
+                  account={acc}
+                  onSaved={() => {
+                    setEditingId(null)
+                    refreshAccounts()
+                  }}
+                  onCancel={() => setEditingId(null)}
+                />
+              ) : (
+                <AccountRow
+                  key={acc.id}
+                  account={acc}
+                  onTest={() => testConnection(acc.id)}
+                  onEdit={() => setEditingId(acc.id)}
+                  onDelete={() => deleteAccount(acc.id)}
+                  testing={testingId === acc.id}
+                />
+              )
+            )}
             {accounts.length < 5 && (
               <AddAccountForm onAdded={refreshAccounts} />
             )}
@@ -131,7 +145,7 @@ export default function Settings() {
   )
 }
 
-function AccountRow({ account, onTest, onDelete, testing }) {
+function AccountRow({ account, onTest, onEdit, onDelete, testing }) {
   return (
     <div className="p-4 rounded-lg bg-bg-elevated border border-border flex flex-wrap items-center gap-3">
       <div className="flex-1 min-w-0">
@@ -142,6 +156,9 @@ function AccountRow({ account, onTest, onDelete, testing }) {
         </p>
       </div>
       <div className="flex gap-2">
+        <Button variant="secondary" size="sm" onClick={onEdit}>
+          Uredi
+        </Button>
         <Button variant="secondary" size="sm" onClick={onTest} disabled={testing}>
           {testing ? 'Testiram...' : 'Testiraj vezu'}
         </Button>
@@ -152,6 +169,120 @@ function AccountRow({ account, onTest, onDelete, testing }) {
           className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
         >
           Obriši
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function EditAccountForm({ account, onSaved, onCancel }) {
+  const [form, setForm] = useState({
+    label: account.label || '',
+    email: account.email || '',
+    smtp_host: account.smtp_host || 'smtp-relay.brevo.com',
+    smtp_port: account.smtp_port ?? 587,
+    smtp_user: account.smtp_user || '',
+    smtp_pass: '',
+    daily_limit: account.daily_limit ?? 50,
+  })
+  const [saving, setSaving] = useState(false)
+  const toastSuccess = useStore((s) => s.toastSuccess)
+  const toastError = useStore((s) => s.toastError)
+
+  const save = async () => {
+    if (!form.email || !form.smtp_host || !form.smtp_user) {
+      toastError('Ispuni email, SMTP host i user')
+      return
+    }
+    setSaving(true)
+    try {
+      const body = {
+        label: form.label,
+        email: form.email,
+        smtp_host: form.smtp_host,
+        smtp_port: form.smtp_port,
+        smtp_user: form.smtp_user,
+        daily_limit: form.daily_limit,
+      }
+      if (form.smtp_pass) body.smtp_pass = form.smtp_pass
+      const res = await fetch(`/api/accounts/${account.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const text = await res.text()
+      let data
+      try {
+        data = text ? JSON.parse(text) : {}
+      } catch {
+        toastError('Server nije vratio valjani odgovor.')
+        return
+      }
+      if (data.id) {
+        toastSuccess('Postavke spremljene')
+        onSaved()
+      } else toastError(data.error || 'Greška')
+    } catch (e) {
+      toastError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="p-4 rounded-lg bg-bg-elevated border border-border space-y-3">
+      <p className="text-sm font-medium text-text-primary">Uredi račun</p>
+      <input
+        placeholder="Label (npr. Brevo 1)"
+        value={form.label}
+        onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
+        className="w-full px-3 py-2 rounded-lg bg-bg-primary border border-border text-text-primary placeholder-text-muted text-sm"
+      />
+      <input
+        placeholder="Email *"
+        value={form.email}
+        onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+        className="w-full px-3 py-2 rounded-lg bg-bg-primary border border-border text-text-primary placeholder-text-muted text-sm"
+      />
+      <input
+        placeholder="SMTP host *"
+        value={form.smtp_host}
+        onChange={(e) => setForm((f) => ({ ...f, smtp_host: e.target.value }))}
+        className="w-full px-3 py-2 rounded-lg bg-bg-primary border border-border text-text-primary placeholder-text-muted text-sm"
+      />
+      <input
+        type="number"
+        placeholder="Port"
+        value={form.smtp_port}
+        onChange={(e) => setForm((f) => ({ ...f, smtp_port: +e.target.value }))}
+        className="w-full px-3 py-2 rounded-lg bg-bg-primary border border-border text-text-primary text-sm"
+      />
+      <input
+        placeholder="SMTP user *"
+        value={form.smtp_user}
+        onChange={(e) => setForm((f) => ({ ...f, smtp_user: e.target.value }))}
+        className="w-full px-3 py-2 rounded-lg bg-bg-primary border border-border text-text-primary placeholder-text-muted text-sm"
+      />
+      <input
+        type="password"
+        placeholder="SMTP pass (ostavi prazno da zadržiš trenutnu)"
+        value={form.smtp_pass}
+        onChange={(e) => setForm((f) => ({ ...f, smtp_pass: e.target.value }))}
+        className="w-full px-3 py-2 rounded-lg bg-bg-primary border border-border text-text-primary placeholder-text-muted text-sm"
+      />
+      <input
+        type="number"
+        placeholder="Dnevni limit"
+        value={form.daily_limit}
+        onChange={(e) => setForm((f) => ({ ...f, daily_limit: +e.target.value }))}
+        className="w-full px-3 py-2 rounded-lg bg-bg-primary border border-border text-text-primary text-sm"
+      />
+      <div className="flex gap-2">
+        <Button size="sm" onClick={save} disabled={saving}>
+          {saving ? 'Spremanje...' : 'Spremi'}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onCancel}>
+          Odustani
         </Button>
       </div>
     </div>
