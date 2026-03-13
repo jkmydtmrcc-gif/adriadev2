@@ -3,14 +3,15 @@ async function generateMessages(lead, openai, agency = {}) {
     ? `DA — kvaliteta: ${lead.website_quality}/10, mobilna verzija: ${lead.is_mobile_friendly ? 'DA' : 'NE'}`
     : 'NE — nema web stranicu uopće';
 
-  const ownerName = agency.owner_name || 'Adria Dev';
-  const agencyPhone = agency.phone || '';
-  const agencyEmail = agency.email || '';
-
-  const signatureLine =
-    agencyPhone || agencyEmail
-      ? `\n\n--\n${ownerName}${agencyPhone ? `\nTel: ${agencyPhone}` : ''}${agencyEmail ? `\n${agencyEmail}` : ''}`
-      : '';
+  const linkLine = '\n\n🌐 Pogledajte naš rad: https://www.adriadev.com\n';
+  const signatureBlock = `
+---
+Adria Dev | Izrada web stranica & SEO
+🌐 www.adriadev.com
+📧 kontakt@adriadev.com
+mobitel: +385976425423
+`;
+  const signatureLine = linkLine + signatureBlock;
 
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
@@ -29,6 +30,7 @@ Piši poruke na HRVATSKOM jeziku koje su:
 - Bez generičnih fraza poput "nudimo Vam naše usluge"
 - Soft CTA — "Javi se ako te zanima", ne "KUPI ODMAH"
 - VAŽNO: U email_body NE stavljaj potpis, ime, telefon ili "[vaše ime]" — potpis se automatski dodaje na kraju.
+- Na kraju svake email poruke (prije potpisa) uvijek dodaj liniju: 🌐 Pogledajte naš rad: https://www.adriadev.com
 
 Adria Dev nudi:
 - Web stranice od 400€ (gotovo za 2-3 tjedna)
@@ -72,17 +74,22 @@ Generiraj personaliziranu email i WhatsApp poruku (bez potpisa na kraju emaila).
   if (parsed.email_body && signatureLine) {
     parsed.email_body = parsed.email_body.trim() + signatureLine;
   }
+  if (parsed.whatsapp_body) {
+    parsed.whatsapp_body = (parsed.whatsapp_body.trim() + '\n\nViše info: adriadev.com').trim();
+  }
   return parsed;
 }
 
 async function generateFollowUp(lead, followUpNumber, openai, agency = {}) {
-  const ownerName = agency.owner_name || 'Adria Dev';
-  const agencyPhone = agency.phone || '';
-  const agencyEmail = agency.email || '';
-  const signatureLine =
-    agencyPhone || agencyEmail
-      ? `\n\n--\n${ownerName}${agencyPhone ? `\nTel: ${agencyPhone}` : ''}${agencyEmail ? `\n${agencyEmail}` : ''}`
-      : '';
+  const linkLine = '\n\n🌐 Pogledajte naš rad: https://www.adriadev.com\n';
+  const signatureBlock = `
+---
+Adria Dev | Izrada web stranica & SEO
+🌐 www.adriadev.com
+📧 kontakt@adriadev.com
+mobitel: +385976425423
+`;
+  const signatureLine = linkLine + signatureBlock;
 
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
@@ -116,6 +123,9 @@ Vrati SAMO JSON:
   const parsed = JSON.parse(clean);
   if (parsed.email_body && signatureLine) {
     parsed.email_body = parsed.email_body.trim() + signatureLine;
+  }
+  if (parsed.whatsapp_body) {
+    parsed.whatsapp_body = (parsed.whatsapp_body.trim() + '\n\nViše info: adriadev.com').trim();
   }
   return parsed;
 }

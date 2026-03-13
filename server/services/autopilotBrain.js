@@ -87,6 +87,39 @@ function scoreLeadPotential(lead) {
   return Math.min(Math.round(score * 10) / 10, 10);
 }
 
+function getDailyPlanSummary(db) {
+  const today = new Date().toISOString().split('T')[0];
+  const accounts = db.prepare('SELECT * FROM email_accounts WHERE is_active = 1').all();
+  const plan = accounts.map((acc) => {
+    const ageDays = getDomainAgeDays(acc.created_at);
+    const limit = getLimitForDomain(acc.created_at);
+    const sentToday =
+      db.prepare(
+        `SELECT COUNT(*) as count FROM leads WHERE sent_from_domain = ? AND date(sent_at) = ?`
+      ).get(acc.email, today)?.count || 0;
+    const phase =
+      ageDays <= 3
+        ? '🌱 Warming dan 1-3'
+        : ageDays <= 7
+          ? '📈 Warming dan 4-7'
+          : ageDays <= 14
+            ? '🔥 Warming dan 8-14'
+            : '🚀 Puni kapacitet';
+    return {
+      domain: acc.email,
+      ageDays,
+      limit,
+      sentToday,
+      remaining: Math.max(0, limit - sentToday),
+      phase,
+    };
+  });
+  const totalLimit = plan.reduce((s, a) => s + a.limit, 0);
+  const totalSent = plan.reduce((s, a) => s + a.sentToday, 0);
+  const totalRemaining = plan.reduce((s, a) => s + a.remaining, 0);
+  return { plan, totalLimit, totalSent, totalRemaining };
+}
+
 async function getAIDecisionForToday(db, openai) {
   const today = new Date();
   const dayOfWeek = today.toLocaleDateString('hr-HR', { weekday: 'long' });
@@ -199,114 +232,167 @@ async function runAutopilot(db, openai, sseClients) {
   try {
     appendLog('🤖 Autopilot pokrenut...');
 
-    appendLog('🧠 AI analizira situaciju...');
-    const decision = await getAIDecisionForToday(db, openai);
-    appendLog(`💡 AI odluka: ${decision.reasoning}`);
-    db.prepare('UPDATE autopilot_runs SET ai_decision_json = ? WHERE id = ?').run(
-      JSON.stringify(decision),
-      runId
-    );
-    db.prepare('UPDATE autopilot_runs SET targets_json = ? WHERE id = ?').run(
-      JSON.stringify(decision.targets),
-      runId
-    );
-    emit('ai_decision', { decision });
-
-    let totalLeadsFound = 0;
-    const allNewLeads = [];
-
-    for (const target of decision.targets) {
-      appendLog(`🔍 Scrapam: ${target.city} + ${target.industry}...`);
-      try {
-        const leads = await scrapeGoogleMaps(target, db);
-
-        for (const lead of leads) {
-          lead.score = scoreLeadPotential(lead);
-          try {
-            const insertResult = db.prepare(
-              `INSERT OR IGNORE INTO leads 
-              (business_name, city, industry, address, phone, email, website,
-               has_website, website_quality, is_mobile_friendly, has_ssl,
-               google_rating, google_reviews, google_place_id, score)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-            ).run(
-              lead.business_name,
-              lead.city,
-              lead.industry,
-              lead.address,
-              lead.phone,
-              lead.email,
-              lead.website,
-              lead.has_website ? 1 : 0,
-              lead.website_quality,
-              lead.is_mobile_friendly ? 1 : 0,
-              lead.has_ssl ? 1 : 0,
-              lead.google_rating,
-              lead.google_reviews,
-              lead.google_place_id,
-              lead.score
-            );
-            if (insertResult.changes > 0) {
-              allNewLeads.push(lead);
-              totalLeadsFound++;
-              emit('lead_found', { lead, total: totalLeadsFound });
-            }
-          } catch (e) {
-            // skip duplicate
-          }
-        }
-
-        db.prepare('INSERT INTO scraped_combos (city, industry, leads_found) VALUES (?,?,?)').run(
-          target.city,
-          target.industry,
-          leads.length
+    const today = new Date().toISOString().split('T')[0];
+    const accounts = db.prepare('SELECT * FROM email_accounts WHERE is_active = 1').all();
+    let totalLimit = 0;
+    for (const acc of accounts) {
+      totalLimit += getLimitForDomain(acc.created_at);
+      if (acc.last_reset !== today) {
+        db.prepare('UPDATE email_accounts SET sent_today = 0, last_reset = ? WHERE id = ?').run(
+          today,
+          acc.id
         );
-        appendLog(`✅ ${target.city} + ${target.industry}: ${leads.length} leadova`);
-        await sleep(2000);
-      } catch (e) {
-        appendLog(`❌ Greška scraping ${target.city}: ${e.message}`);
       }
     }
+    const alreadySentToday =
+      db.prepare(`SELECT COUNT(*) as count FROM leads WHERE date(sent_at) = ?`).get(today)
+        ?.count || 0;
+    const canSendToday = Math.max(0, totalLimit - alreadySentToday);
+    appendLog(
+      `📊 Danas mogu poslati: ${canSendToday} emailova (limit: ${totalLimit}, već poslano: ${alreadySentToday})`
+    );
 
-    db.prepare('UPDATE autopilot_runs SET leads_found = ? WHERE id = ?').run(totalLeadsFound, runId);
-    appendLog(`📊 Ukupno novih leadova: ${totalLeadsFound}`);
-
-    appendLog('✍️ Generiram personalizirane poruke...');
-    const agency = db.prepare('SELECT owner_name, phone, email FROM agency_settings LIMIT 1').get() || {};
-    const leadsForMessages = db
-      .prepare(
-        `SELECT * FROM leads WHERE status = 'new' ORDER BY score DESC LIMIT 200`
-      )
-      .all();
-
-    let messagesGenerated = 0;
-    const batchSize = 5;
-    for (let i = 0; i < leadsForMessages.length; i += batchSize) {
-      const batch = leadsForMessages.slice(i, i + batchSize);
-      await Promise.all(
-        batch.map(async (lead) => {
-          try {
-            const messages = await generateMessages(lead, openai, agency);
-            db.prepare(
-              `UPDATE leads SET 
-              email_subject = ?, email_body = ?, whatsapp_body = ?, status = 'message_ready'
-              WHERE id = ?`
-            ).run(messages.email_subject, messages.email_body, messages.whatsapp_body, lead.id);
-            messagesGenerated++;
-            emit('message_generated', { leadId: lead.id, total: messagesGenerated });
-          } catch (e) {
-            db.prepare("UPDATE leads SET status = 'generation_failed' WHERE id = ?").run(lead.id);
-          }
-        })
-      );
-      await sleep(1000);
+    if (canSendToday === 0) {
+      appendLog('⛔ Dnevni limit dostignut. Završavam.');
+      db.prepare(
+        "UPDATE autopilot_runs SET status = 'completed', finished_at = datetime('now') WHERE id = ?"
+      ).run(runId);
+      emit('completed', { leadsFound: 0, messagesGenerated: 0, emailsSent: 0 });
+      return;
     }
 
-    db.prepare('UPDATE autopilot_runs SET messages_generated = ? WHERE id = ?').run(
-      messagesGenerated,
-      runId
-    );
-    appendLog(`✉️ Generirano poruka: ${messagesGenerated}`);
+    const readyLeads =
+      db.prepare(
+        `SELECT COUNT(*) as count FROM leads 
+         WHERE status = 'message_ready' AND email IS NOT NULL AND email != '' AND archived = 0`
+      ).get()?.count || 0;
+    appendLog(`📬 Leadova spremnih za slanje u bazi: ${readyLeads}`);
+
+    const needToScrape = Math.max(0, canSendToday - readyLeads);
+    let totalLeadsFound = 0;
+    let messagesGenerated = 0;
+
+    if (needToScrape > 0) {
+      appendLog(`🔍 Trebam još ~${needToScrape} leadova — pokrećem scraping...`);
+      appendLog('🧠 AI analizira situaciju...');
+      const decision = await getAIDecisionForToday(db, openai);
+      appendLog(`💡 AI odluka: ${decision.reasoning}`);
+      db.prepare('UPDATE autopilot_runs SET ai_decision_json = ? WHERE id = ?').run(
+        JSON.stringify(decision),
+        runId
+      );
+      db.prepare('UPDATE autopilot_runs SET targets_json = ? WHERE id = ?').run(
+        JSON.stringify(decision.targets),
+        runId
+      );
+      emit('ai_decision', { decision });
+
+      for (const target of decision.targets) {
+        if (totalLeadsFound >= needToScrape) break;
+        appendLog(`🔍 Scrapam: ${target.city} + ${target.industry}...`);
+        try {
+          const leads = await scrapeGoogleMaps(target, db);
+          let savedCount = 0;
+          for (const lead of leads) {
+            const dup = db
+              .prepare(
+                `SELECT id FROM leads WHERE 
+                 (email = ? AND email != '' AND status IN ('contacted','replied'))
+                 OR (business_name = ? AND city = ? AND status IN ('contacted','replied'))`
+              )
+              .get(lead.email || '', lead.business_name, lead.city || '');
+            if (dup) continue;
+            lead.score = scoreLeadPotential(lead);
+            try {
+              const insertResult = db.prepare(
+                `INSERT OR IGNORE INTO leads 
+                (business_name, city, industry, address, phone, email, website,
+                 has_website, website_quality, is_mobile_friendly, has_ssl,
+                 google_rating, google_reviews, google_place_id, score)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+              ).run(
+                lead.business_name,
+                lead.city,
+                lead.industry,
+                lead.address,
+                lead.phone,
+                lead.email,
+                lead.website,
+                lead.has_website ? 1 : 0,
+                lead.website_quality,
+                lead.is_mobile_friendly ? 1 : 0,
+                lead.has_ssl ? 1 : 0,
+                lead.google_rating,
+                lead.google_reviews,
+                lead.google_place_id,
+                lead.score
+              );
+              if (insertResult.changes > 0) {
+                savedCount++;
+                totalLeadsFound++;
+                emit('lead_found', { lead, total: totalLeadsFound });
+              }
+            } catch (e) {
+              // skip duplicate place_id
+            }
+          }
+          db.prepare('INSERT INTO scraped_combos (city, industry, leads_found) VALUES (?,?,?)').run(
+            target.city,
+            target.industry,
+            savedCount
+          );
+          appendLog(`✅ ${target.city} + ${target.industry}: ${savedCount} novih leadova`);
+          await sleep(2000);
+        } catch (e) {
+          appendLog(`❌ Greška scraping ${target.city}: ${e.message}`);
+        }
+      }
+
+      db.prepare('UPDATE autopilot_runs SET leads_found = ? WHERE id = ?').run(
+        totalLeadsFound,
+        runId
+      );
+      appendLog(`📊 Ukupno novih leadova: ${totalLeadsFound}`);
+
+      appendLog('✍️ Generiram personalizirane poruke za nove leadove...');
+      const agency =
+        db.prepare('SELECT owner_name, phone, email FROM agency_settings LIMIT 1').get() || {};
+      const leadsForMessages = db
+        .prepare(
+          `SELECT * FROM leads WHERE status = 'new' ORDER BY score DESC LIMIT 200`
+        )
+        .all();
+      const batchSize = 5;
+      for (let i = 0; i < leadsForMessages.length; i += batchSize) {
+        const batch = leadsForMessages.slice(i, i + batchSize);
+        await Promise.all(
+          batch.map(async (lead) => {
+            try {
+              const messages = await generateMessages(lead, openai, agency);
+              db.prepare(
+                `UPDATE leads SET 
+                email_subject = ?, email_body = ?, whatsapp_body = ?, status = 'message_ready'
+                WHERE id = ?`
+              ).run(messages.email_subject, messages.email_body, messages.whatsapp_body, lead.id);
+              messagesGenerated++;
+              emit('message_generated', { leadId: lead.id, total: messagesGenerated });
+            } catch (e) {
+              db.prepare("UPDATE leads SET status = 'generation_failed' WHERE id = ?").run(
+                lead.id
+              );
+            }
+          })
+        );
+        await sleep(1000);
+      }
+      db.prepare('UPDATE autopilot_runs SET messages_generated = ? WHERE id = ?').run(
+        messagesGenerated,
+        runId
+      );
+      appendLog(`✉️ Generirano poruka: ${messagesGenerated}`);
+    } else {
+      appendLog(`✅ Imam dovoljno leadova u bazi (${readyLeads}), ne trebam scrapati.`);
+    }
 
     appendLog('📤 Šaljem emailove...');
     const emailsSent = await sendEmailsForToday(db, appendLog, emit);
@@ -333,6 +419,8 @@ async function runAutopilot(db, openai, sseClients) {
 
 module.exports = {
   runAutopilot,
+  getDailyPlanSummary,
+  getAIDecisionForToday,
   getLimitForDomain,
   scoreLeadPotential,
   getDomainAgeDays,

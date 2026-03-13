@@ -5,6 +5,26 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isAlreadySent(db, email) {
+  if (!email) return false;
+  const existing = db
+    .prepare(
+      `SELECT id FROM leads WHERE email = ? AND status IN ('contacted', 'replied') AND sent_at IS NOT NULL`
+    )
+    .get(email.trim());
+  return !!existing;
+}
+
+function isAlreadyContacted(db, businessName, city) {
+  if (!businessName) return false;
+  const existing = db
+    .prepare(
+      `SELECT id FROM leads WHERE business_name = ? AND city = ? AND status IN ('contacted', 'replied')`
+    )
+    .get(businessName.trim(), (city || '').trim());
+  return !!existing;
+}
+
 async function sendSingleEmail(lead, account) {
   try {
     const transporter = createTransport({
@@ -34,6 +54,7 @@ async function sendSingleEmail(lead, account) {
 }
 
 async function sendEmailsForToday(db, appendLog, emit) {
+  const today = new Date().toISOString().split('T')[0];
   const accounts = db.prepare('SELECT * FROM email_accounts WHERE is_active = 1').all();
 
   if (accounts.length === 0) {
@@ -41,8 +62,17 @@ async function sendEmailsForToday(db, appendLog, emit) {
     return 0;
   }
 
+  const totalLimit = accounts.reduce((sum, acc) => sum + getLimitForDomain(acc.created_at), 0);
+  const totalSentToday =
+    db.prepare(`SELECT COUNT(*) as count FROM leads WHERE date(sent_at) = ?`).get(today)?.count ||
+    0;
+  if (totalSentToday >= totalLimit) {
+    appendLog(`⛔ Dnevni limit dostignut (${totalSentToday}/${totalLimit}). Zaustavljam slanje.`);
+    return 0;
+  }
+  appendLog(`📊 Danas poslano: ${totalSentToday}/${totalLimit} — nastavljam...`);
+
   for (const account of accounts) {
-    const today = new Date().toISOString().split('T')[0];
     if (account.last_reset !== today) {
       db.prepare('UPDATE email_accounts SET sent_today = 0, last_reset = ? WHERE id = ?').run(
         today,
@@ -64,6 +94,11 @@ async function sendEmailsForToday(db, appendLog, emit) {
   let accountIndex = 0;
 
   for (const lead of leads) {
+    if (isAlreadySent(db, lead.email) || isAlreadyContacted(db, lead.business_name, lead.city)) {
+      db.prepare("UPDATE leads SET status = 'duplicate' WHERE id = ?").run(lead.id);
+      continue;
+    }
+
     let accountFound = false;
     for (let i = 0; i < accounts.length; i++) {
       const acc = accounts[(accountIndex + i) % accounts.length];
@@ -83,6 +118,10 @@ async function sendEmailsForToday(db, appendLog, emit) {
           accountIndex = (accountIndex + i + 1) % accounts.length;
           accountFound = true;
           if (emit) emit('email_sent', { leadId: lead.id, domain: freshAcc.email, total: totalSent });
+          if (totalSentToday + totalSent >= totalLimit) {
+            appendLog(`⛔ Dnevni limit dostignut. Zaustavljam.`);
+            return totalSent;
+          }
           await sleep(30000);
         }
         break;
