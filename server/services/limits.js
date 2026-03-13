@@ -1,5 +1,5 @@
 const WARMING_SCHEDULE = [
-  { dayFrom: 1, dayTo: 3, limitPerDomain: 10 },
+  { dayFrom: 0, dayTo: 3, limitPerDomain: 10 },
   { dayFrom: 4, dayTo: 7, limitPerDomain: 20 },
   { dayFrom: 8, dayTo: 10, limitPerDomain: 30 },
   { dayFrom: 11, dayTo: 14, limitPerDomain: 40 },

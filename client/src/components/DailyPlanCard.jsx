@@ -41,6 +41,9 @@ export function DailyPlanCard() {
     <Card>
       <CardHeader>
         <CardTitle>📋 Današnji plan</CardTitle>
+        <p className="text-text-muted text-xs mt-1">
+          Autopilot se u 9:00 sam pokreće i danas pošalje max {plan.totalLimit} emailova (warming limit po domeni).
+        </p>
       </CardHeader>
       <div className="flex gap-6 mb-6">
         <div className="text-center">
