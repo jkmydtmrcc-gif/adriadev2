@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from './components/ui/Toaster'
+import AuthGuard from './components/AuthGuard'
 import { Layout } from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import Leads from './pages/Leads'
@@ -16,7 +17,8 @@ export default function App() {
   return (
     <BrowserRouter>
       <Toaster />
-      <Layout>
+      <AuthGuard>
+        <Layout>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/leads" element={<Leads />} />
@@ -30,7 +32,8 @@ export default function App() {
           <Route path="/klijenti" element={<Klijenti />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </Layout>
+        </Layout>
+      </AuthGuard>
     </BrowserRouter>
   )
 }
